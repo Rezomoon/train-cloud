@@ -2,8 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from apps.users.serializers import LoginUserSerializer, UserCreateSerializer
+from apps.users.serializers import LoginUserSerializer, UserCreateSerializer, UserSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.users.queris import all_users
+from apps.users.permissions import IsAdminUser
 #
 def generate_main_token(user):
     refresh = RefreshToken.for_user(user)
@@ -45,3 +47,10 @@ class RegisterUserView(APIView):
             serializer.save()
             return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class UserListView(APIView):
+    permission_classes = [IsAdminUser]
+    def get(self, request):
+        query = all_users()
+        serializer = UserSerializer(query, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
