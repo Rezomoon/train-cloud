@@ -18,3 +18,8 @@ class OperatingSystem(models.Model):
 
     def __str__(self):
         return f"{self.name} {self.version}"
+
+class DataCenter(models.Model):
+    name = models.CharField(max_length=100)
+    region = models.ForeignKey(Region, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
