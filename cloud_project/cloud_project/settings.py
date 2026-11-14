@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.users",
     "apps.vps",
     "apps.infrastructure",
+    "apps.orders",
 ]
 
 MIDDLEWARE = [

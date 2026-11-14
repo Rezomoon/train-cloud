@@ -16,6 +16,6 @@ class DurationAdmin(admin.ModelAdmin):
 
 @admin.register(VPS)
 class VPSAdmin(admin.ModelAdmin):
-    list_display = ( 'user', 'plan', 'duration', 'final_price', 'ip_address', 'status')
+    list_display = ( 'user', 'plan', 'duration', 'ip_address', 'status')
     list_filter = ('status',)
     search_fields = ('user__email', 'plan__name', 'duration__name', 'ip_address')

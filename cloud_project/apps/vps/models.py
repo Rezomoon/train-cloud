@@ -27,12 +27,11 @@ class Duration(AuditModel):
 
 
 class VPS(AuditModel):
-    # order = models.OneToOneField(Order, on_delete=models.CASCADE)
+    # order = models.OneToOneField("apps.orders.Order", on_delete=models.CASCADE)
     name = models.CharField(max_length=100, default='My VPS')
     user = models.ForeignKey('users.User', on_delete=models.CASCADE)
     plan = models.ForeignKey(Plan,  on_delete=models.CASCADE)
     duration = models.ForeignKey(Duration,  on_delete=models.CASCADE)
-    final_price = models.DecimalField(max_digits=10, decimal_places=2)
     ip_address = models.GenericIPAddressField()
     status = models.CharField(max_length=50, choices=[('active', 'Active'), ('inactive', 'Inactive')], default='inactive')
 
