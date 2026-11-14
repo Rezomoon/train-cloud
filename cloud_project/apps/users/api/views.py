@@ -2,8 +2,9 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from apps.users.serializers import LoginUserSerializer, UserCreateSerializer, UserSerializer, UserProfileSerializer
+from apps.users.serializers import LoginUserSerializer, UserCreateSerializer, UserSerializer, UserProfileSerializer, RefreshTokenSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from apps.users.queris import all_users
 from apps.users.permissions import IsAdminUser
 #
@@ -35,6 +36,29 @@ class LoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+class RefreshTokenView(APIView):
+    permission_classes = [
+        AllowAny,
+    ]
+
+    def post(self, request):
+        serializer = RefreshTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            refresh = RefreshToken(serializer.validated_data["refresh"])
+        except TokenError:
+            return Response(
+                {"detail": "Invalid or expired refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        return Response(
+            {"access": str(refresh.access_token)},
+            status=status.HTTP_200_OK,
+        )
+
 
 class RegisterUserView(APIView):
     permission_classes = [
