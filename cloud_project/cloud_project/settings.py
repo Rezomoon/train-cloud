@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     # apps :
     "apps.users",
     "apps.vps",
+    "apps.infrastructure",
 ]
 
 MIDDLEWARE = [
