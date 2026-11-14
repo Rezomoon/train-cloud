@@ -14,3 +14,11 @@ class Plan(models.Model):
 
     def __str__(self):
         return self.name
+
+class Duration(models.Model):
+    name = models.CharField(max_length=100)
+    duration_in_days = models.IntegerField()
+    data_center = models.ForeignKey('infrastructure.DataCenter', on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.name
