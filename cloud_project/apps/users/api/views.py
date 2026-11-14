@@ -53,7 +53,9 @@ class UserListView(APIView):
     def get(self, request):
         query = all_users()
         serializer = UserSerializer(query, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+                        "data": serializer.data
+                    }, status=status.HTTP_200_OK)
 
 
 class UserProfileView(APIView):
@@ -61,7 +63,9 @@ class UserProfileView(APIView):
 
     def get(self, request):
         serializer = UserProfileSerializer(request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+                        "data": serializer.data
+                    }, status=status.HTTP_200_OK)
 
     def patch(self, request):
         serializer = UserProfileSerializer(
@@ -69,10 +73,14 @@ class UserProfileView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+                        "data": serializer.data
+                    }, status=status.HTTP_200_OK)
 
     def put(self, request):
         serializer = UserProfileSerializer(request.user, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+                        "data": serializer.data
+                    }, status=status.HTTP_200_OK)
