@@ -1,16 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from simple_history.models import HistoricalRecords
+from apps.infrastructure.models import AuditModel
 # Create your models here.
 
-
-
-class AuditableModel(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        abstract = True
 
 
 
@@ -41,6 +34,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, mobile, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', UserRole.ADMIN)
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
@@ -54,7 +48,7 @@ class UserManager(BaseUserManager):
 
 
 
-class User(AbstractUser, AuditableModel):
+class User(AbstractUser, AuditModel):
     # Add any additional fields or methods specific to your user model here
     username = None
     email = models.EmailField(unique=True) 

@@ -3,6 +3,8 @@ from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 #
 user = get_user_model()
@@ -52,6 +54,17 @@ class LoginUserSerializer(serializers.Serializer):
 
         attrs['user'] = user_instance
         return attrs
+
+
+class RefreshTokenSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+    def validate_refresh(self, value):
+        try:
+            RefreshToken(value)
+        except TokenError:
+            raise serializers.ValidationError("Invalid or expired refresh token.")
+        return value
 
 
 class UserCreateSerializer(ModelSerializer):
