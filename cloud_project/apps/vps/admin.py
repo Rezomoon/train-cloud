@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Plan, Duration
+from .models import Plan, Duration, VPS
 # Register your models here.
 
 @admin.register(Plan)
@@ -13,3 +13,9 @@ class PlanAdmin(admin.ModelAdmin):
 class DurationAdmin(admin.ModelAdmin):
     list_display = ('name', 'duration_in_month', 'data_center')
     search_fields = ('name',)
+
+@admin.register(VPS)
+class VPSAdmin(admin.ModelAdmin):
+    list_display = ( 'user', 'plan', 'duration', 'final_price', 'ip_address', 'status')
+    list_filter = ('status',)
+    search_fields = ('user__email', 'plan__name', 'duration__name', 'ip_address')
