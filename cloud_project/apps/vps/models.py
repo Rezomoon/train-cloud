@@ -46,6 +46,12 @@ class VPS(AuditModel):
     ip_address = models.GenericIPAddressField(null = True, blank=True)
     status = models.CharField(max_length=50, choices=StatusChoices.choices, default='inactive')
 
+    # Hardware snapshot captured at purchase time so later Plan changes do not
+    # affect already provisioned VPS instances.
+    cpu = models.IntegerField()
+    ram = models.IntegerField()
+    storage = models.IntegerField()
+
     history = HistoricalRecords()
 
     class Meta:

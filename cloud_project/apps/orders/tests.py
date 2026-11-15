@@ -175,6 +175,9 @@ class PurchaseOrderTests(TestCase):
             plan=self.plan,
             duration=self.duration,
             name="Duplicated",
+            cpu=self.plan.cpu,
+            ram=self.plan.ram,
+            storage=self.plan.storage,
             status=StatusChoices.Active,
         )
 
@@ -214,6 +217,9 @@ class PurchaseOrderTests(TestCase):
             plan=self.plan,
             duration=self.duration,
             name="Shared Name",
+            cpu=self.plan.cpu,
+            ram=self.plan.ram,
+            storage=self.plan.storage,
             status=StatusChoices.Active,
         )
 
@@ -227,6 +233,9 @@ class PurchaseOrderTests(TestCase):
             plan=self.plan,
             duration=self.duration,
             name="CaseSensitive",
+            cpu=self.plan.cpu,
+            ram=self.plan.ram,
+            storage=self.plan.storage,
             status=StatusChoices.Active,
         )
 
@@ -237,6 +246,9 @@ class PurchaseOrderTests(TestCase):
                     plan=self.plan,
                     duration=self.duration,
                     name="casesensitive",
+                    cpu=self.plan.cpu,
+                    ram=self.plan.ram,
+                    storage=self.plan.storage,
                     status=StatusChoices.Active,
                 )
 
@@ -257,8 +269,46 @@ class PurchaseOrderTests(TestCase):
         self.assertEqual(vps.operating_system, self.operating_system)
         self.assertEqual(vps.status, StatusChoices.Active)
         self.assertEqual(vps.ip_address, "10.10.0.15")
+        self.assertEqual(vps.cpu, self.plan.cpu)
+        self.assertEqual(vps.ram, self.plan.ram)
+        self.assertEqual(vps.storage, self.plan.storage)
         self.assertEqual(order.vps_id, vps.uuid)
         self.assertEqual(order.status, "active")
+
+    def test_vps_keeps_purchased_hardware_after_plan_changes(self):
+        order = self._create_order(vps_name="Snapshot VPS")
+        paid_order, _ = process_order_payment(
+            user=self.user,
+            order_uuid=order.uuid,
+        )
+        vps = paid_order.vps
+
+        # The plan is edited after purchase; the VPS must keep its snapshot.
+        self.plan.cpu = 99
+        self.plan.ram = 128
+        self.plan.storage = 2048
+        self.plan.save(update_fields=["cpu", "ram", "storage"])
+
+        vps.refresh_from_db()
+        self.assertEqual(vps.cpu, 2)
+        self.assertEqual(vps.ram, 4)
+        self.assertEqual(vps.storage, 40)
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        list_response = client.get("/api/v1/vps/")
+        self.assertEqual(list_response.status_code, 200)
+        listed = list_response.data[0]
+        self.assertEqual(listed["cpu"], 2)
+        self.assertEqual(listed["ram"], 4)
+        self.assertEqual(listed["storage"], 40)
+
+        detail_response = client.get(f"/api/v1/orders/{order.uuid}/")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.data["vps"]["cpu"], 2)
+        self.assertEqual(detail_response.data["vps"]["ram"], 4)
+        self.assertEqual(detail_response.data["vps"]["storage"], 40)
 
         # Second call must return the same VPS and not create another one.
         again = create_vps_from_order(order)
@@ -275,6 +325,9 @@ class PurchaseOrderTests(TestCase):
             plan=self.plan,
             duration=self.duration,
             name="Race Name",
+            cpu=self.plan.cpu,
+            ram=self.plan.ram,
+            storage=self.plan.storage,
             status=StatusChoices.Active,
         )
 
@@ -348,6 +401,9 @@ class PurchaseOrderTests(TestCase):
             "name",
             "ip_address",
             "status",
+            "cpu",
+            "ram",
+            "storage",
             "plan",
             "duration",
             "operating_system",
@@ -355,6 +411,9 @@ class PurchaseOrderTests(TestCase):
         ):
             self.assertIn(field, response.data["vps"])
         self.assertEqual(response.data["vps"]["status"], "active")
+        self.assertEqual(response.data["vps"]["cpu"], self.plan.cpu)
+        self.assertEqual(response.data["vps"]["ram"], self.plan.ram)
+        self.assertEqual(response.data["vps"]["storage"], self.plan.storage)
 
     def test_pay_endpoint_twice_returns_400_and_no_duplicate_vps(self):
         order = self._create_order(vps_name="Double Pay VPS")

@@ -28,6 +28,9 @@ def create_vps_from_order(order: Order) -> Optional[VPS]:
                     duration=order.duration,
                     operating_system=order.operating_system,
                     name=order.vps_name,
+                    cpu=order.cpu_snapshot,
+                    ram=order.ram_snapshot,
+                    storage=order.storage_snapshot,
                     # TODO: Replace mock IP/status with Infrastructure Provider
                     ip_address="10.10.0.15",
                     status=StatusChoices.Active,
