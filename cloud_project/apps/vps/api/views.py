@@ -41,5 +41,9 @@ class PurchaseVPSView(APIView):
         # Implement the logic to handle VPS purchase here
         data = request.data
         user = request.user
+        serializer = VPSPlanSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save(user=user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response({"detail": "VPS purchase functionality is not implemented yet."}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

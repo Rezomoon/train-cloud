@@ -25,6 +25,9 @@ class Duration(AuditModel):
     def __str__(self):
         return self.name
 
+class StatusChoices(models.TextChoices):
+    Active = "active"
+    Inactive = "inactive"
 
 class VPS(AuditModel):
     # order = models.OneToOneField("apps.orders.Order", on_delete=models.CASCADE)
@@ -32,8 +35,8 @@ class VPS(AuditModel):
     user = models.ForeignKey('users.User', on_delete=models.CASCADE)
     plan = models.ForeignKey(Plan,  on_delete=models.CASCADE)
     duration = models.ForeignKey(Duration,  on_delete=models.CASCADE)
-    ip_address = models.GenericIPAddressField()
-    status = models.CharField(max_length=50, choices=[('active', 'Active'), ('inactive', 'Inactive')], default='inactive')
+    ip_address = models.GenericIPAddressField(null = True, blank=True)
+    status = models.CharField(max_length=50, choices=StatusChoices.choices, default='inactive')
 
     history = HistoricalRecords()
 
