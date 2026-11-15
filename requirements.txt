@@ -1,7 +1,9 @@
 asgiref==3.8.1
 backports.zoneinfo==0.2.1
+celery==5.4.0
 Django==4.2.30
 django-environ==0.11.2
 python-dotenv==1.0.1
+redis==5.0.8
 sqlparse==0.5.5
 typing_extensions==4.13.2
