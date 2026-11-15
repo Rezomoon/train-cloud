@@ -17,6 +17,8 @@ class PaymentStatusChoices(models.TextChoices):
 class OrderStatusChoices(models.TextChoices):
     PENDING_PAYMENT = "pending_payment", "Pending Payment"
     PAID = "paid", "Paid"
+    PROVISIONING = "provisioning", "Provisioning"
+    ACTIVE = "active", "Active"
     CANCELLED = "cancelled", "Cancelled"
     FAILED = "failed", "Failed"
 

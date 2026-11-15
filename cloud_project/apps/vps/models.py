@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import UniqueConstraint
+from django.db.models.functions import Lower
 from simple_history.models import HistoricalRecords
 from apps.infrastructure.models import AuditModel
 # Create your models here.
@@ -35,10 +37,25 @@ class VPS(AuditModel):
     user = models.ForeignKey('users.User', on_delete=models.CASCADE)
     plan = models.ForeignKey(Plan,  on_delete=models.CASCADE)
     duration = models.ForeignKey(Duration,  on_delete=models.CASCADE)
+    operating_system = models.ForeignKey(
+        'infrastructure.OperatingSystem',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
     ip_address = models.GenericIPAddressField(null = True, blank=True)
     status = models.CharField(max_length=50, choices=StatusChoices.choices, default='inactive')
 
     history = HistoricalRecords()
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                Lower('name'),
+                'user',
+                name='unique_vps_name_per_user',
+            )
+        ]
 
     def __str__(self):
         return f"VPS {self.name} for User {self.user}"

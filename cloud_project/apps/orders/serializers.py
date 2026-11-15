@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
 from apps.orders.models import Order, PaymentMethodChoices
+from apps.vps.models import VPS
+
+
+class OrderVPSSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VPS
+        fields = ["uuid", "name", "ip_address", "status"]
 
 
 class PurchaseVPSInputSerializer(serializers.Serializer):
@@ -22,6 +29,7 @@ class PurchaseVPSInputSerializer(serializers.Serializer):
 class OrderDetailSerializer(serializers.ModelSerializer):
     plan = serializers.UUIDField(source="plan_id", read_only=True)
     duration = serializers.UUIDField(source="duration_id", read_only=True)
+    vps = OrderVPSSummarySerializer(read_only=True)
 
     class Meta:
         model = Order
@@ -30,6 +38,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "vps_name",
             "plan",
             "duration",
+            "vps",
             "cpu_snapshot",
             "ram_snapshot",
             "storage_snapshot",

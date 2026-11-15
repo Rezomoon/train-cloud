@@ -2,9 +2,19 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from apps.vps.serializers import VPSPlanSerializer, DurationSerializer
+from apps.vps.models import VPS
+from apps.vps.serializers import VPSPlanSerializer, VPSSerializer, DurationSerializer
 from apps.vps.queries import all_vps_plans, get_vps_plan_by_id, all_durations, get_duration_by_id
 # Create your views here.
+
+
+class VPSListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        vps_list = VPS.objects.filter(user=request.user)
+        serializer = VPSSerializer(vps_list, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class VPSPlansView(APIView):

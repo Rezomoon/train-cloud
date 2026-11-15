@@ -7,6 +7,14 @@ from apps.orders.models import (
     OrderStatusChoices,
     PaymentStatusChoices,
 )
+from apps.vps.services import create_vps_from_order
+
+
+@shared_task
+def provision_vps_task(order_uuid: str):
+    """Create the VPS record for a paid order (mock provisioning)."""
+    order = Order.objects.get(uuid=order_uuid)
+    return create_vps_from_order(order)
 
 
 @shared_task
@@ -38,4 +46,9 @@ def process_mock_payment_task(order_uuid: str):
             ]
         )
 
-        # TODO: Trigger VPS provisioning task here
+        # Provisioning is decoupled from payment and only enqueued after the
+        # payment transaction commits.
+        transaction.on_commit(
+            
+            lambda: provision_vps_task.delay(str(order.uuid))
+        )
