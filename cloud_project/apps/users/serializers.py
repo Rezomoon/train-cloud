@@ -23,8 +23,8 @@ class UserProfileSerializer(ModelSerializer):
 
     class Meta:
         model = user
-        fields = ['id', 'email', 'mobile', 'national_id', 'role', 'password']
-        read_only_fields = ['id', 'role']
+        fields = ['uuid', 'email', 'mobile', 'national_id', 'role', 'password']
+        read_only_fields = ['uuid', 'role']
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)

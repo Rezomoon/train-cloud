@@ -28,7 +28,7 @@ class LoginView(APIView):
             {
                 "message": "Login successful",
                 "user": {
-                    "id": user.id,
+                    "uuid": user.uuid,
                     "mobile": user.mobile,
                     "role": user.role,
                 },

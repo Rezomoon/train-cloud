@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from apps.vps.serializers import VPSPlanSerializer
-from apps.vps.queries import all_vps_plans, get_vps_plan_by_id
+from apps.vps.serializers import VPSPlanSerializer, DurationSerializer
+from apps.vps.queries import all_vps_plans, get_vps_plan_by_id, all_durations, get_duration_by_id
 # Create your views here.
 
 
@@ -22,3 +22,24 @@ class VPSPlanDetailView(APIView):
             return Response({"detail": "VPS Plan not found."}, status=status.HTTP_404_NOT_FOUND)
         serializer = VPSPlanSerializer(query)
         return Response(serializer.data)
+
+
+
+
+class DurationListView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        durations = all_durations()
+        serializer = DurationSerializer(durations, many=True)
+
+        return Response(serializer.data,status=status.HTTP_200_OK)
+
+class PurchaseVPSView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Implement the logic to handle VPS purchase here
+        data = request.data
+        user = request.user
+
+        return Response({"detail": "VPS purchase functionality is not implemented yet."}, status=status.HTTP_501_NOT_IMPLEMENTED)

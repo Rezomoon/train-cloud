@@ -8,7 +8,7 @@ class Order(AuditModel):
     status = models.CharField(max_length=50, choices=[('pending', 'Pending'), ('completed', 'Completed'), ('cancelled', 'Cancelled')], default='pending')
     transaction = models.OneToOneField('Transaction', on_delete=models.CASCADE, null=True, blank=True)
     def __str__(self):
-        return f"Order {self.id} for User {self.user.id}"
+        return f"Order {self.uuid} for User {self.user.uuid}"
 
 class Transaction(AuditModel):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
