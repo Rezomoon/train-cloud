@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import decimal
 
 from django.contrib.auth import get_user_model
@@ -10,8 +8,7 @@ from rest_framework.test import APIClient
 
 from apps.infrastructure.models import DataCenter, OperatingSystem, Region
 from apps.orders.models import Order
-from apps.orders.services import create_purchase_order
-from apps.orders.tasks import process_mock_payment_task, provision_vps_task
+from apps.orders.services import create_purchase_order, process_order_payment
 from apps.vps.models import Duration, Plan, StatusChoices, VPS
 from apps.vps.services import create_vps_from_order
 
@@ -54,16 +51,20 @@ class PurchaseOrderTests(TestCase):
             version="22.04",
         )
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_create_purchase_order_snapshots_and_enqueues(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                operating_system_uuid=self.operating_system.uuid,
-                vps_name="My Test VPS",
-            )
+    def _create_order(self, vps_name="My Test VPS", user=None):
+        return create_purchase_order(
+            user=user or self.user,
+            plan_uuid=self.plan.uuid,
+            duration_uuid=self.duration.uuid,
+            operating_system_uuid=self.operating_system.uuid,
+            vps_name=vps_name,
+        )
+
+    # ------------------------------------------------------------------
+    # Order creation (Step A)
+    # ------------------------------------------------------------------
+    def test_create_purchase_order_snapshots_without_payment(self):
+        order = self._create_order()
 
         self.assertEqual(order.cpu_snapshot, self.plan.cpu)
         self.assertEqual(order.ram_snapshot, self.plan.ram)
@@ -73,7 +74,9 @@ class PurchaseOrderTests(TestCase):
         self.assertEqual(order.status, "pending_payment")
         self.assertEqual(order.payment_status, "pending")
         self.assertEqual(order.vps_name, "My Test VPS")
-        delay_mock.assert_called_once_with(str(order.uuid))
+        self.assertIsNone(order.vps_id)
+        self.assertIsNone(order.payment_reference)
+        self.assertEqual(VPS.objects.count(), 0)
 
     def test_mismatched_data_centers_raise_validation_error(self):
         duration = Duration.objects.create(
@@ -91,68 +94,37 @@ class PurchaseOrderTests(TestCase):
 
         self.assertEqual(Order.objects.count(), 0)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_inactive_plan_raises_validation_error(self, delay_mock):
+    def test_inactive_plan_raises_validation_error(self):
         self.plan.is_active = False
         self.plan.save(update_fields=["is_active"])
 
         with self.assertRaises(ValidationError):
-            create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-            )
+            self._create_order()
 
-        delay_mock.assert_not_called()
+        self.assertEqual(Order.objects.count(), 0)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_mock_payment_task_is_idempotent(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-            )
-
-        process_mock_payment_task(str(order.uuid))
-        order.refresh_from_db()
-
-        self.assertEqual(order.payment_status, "completed")
-        self.assertEqual(order.status, "paid")
-        self.assertIsNotNone(order.paid_at)
-        paid_at = order.paid_at
-
-        # Running the task a second time must not change anything.
-        process_mock_payment_task(str(order.uuid))
-        order.refresh_from_db()
-
-        self.assertEqual(order.payment_status, "completed")
-        self.assertEqual(order.status, "paid")
-        self.assertEqual(order.paid_at, paid_at)
-
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_purchase_api_returns_201(self, delay_mock):
+    def test_purchase_api_returns_201_without_vps(self):
         client = APIClient()
         client.force_authenticate(user=self.user)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            response = client.post(
-                "/api/v1/orders/purchase/",
-                {
-                    "plan_uuid": str(self.plan.uuid),
-                    "duration_uuid": str(self.duration.uuid),
-                    "operating_system_uuid": str(self.operating_system.uuid),
-                    "vps_name": "API VPS",
-                },
-                format="json",
-            )
+        response = client.post(
+            "/api/v1/orders/purchase/",
+            {
+                "plan_uuid": str(self.plan.uuid),
+                "duration_uuid": str(self.duration.uuid),
+                "operating_system_uuid": str(self.operating_system.uuid),
+                "vps_name": "API VPS",
+            },
+            format="json",
+        )
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["vps_name"], "API VPS")
         self.assertEqual(response.data["status"], "pending_payment")
         self.assertEqual(response.data["payment_status"], "pending")
         self.assertEqual(response.data["total_amount"], "300000.00")
-        delay_mock.assert_called_once()
+        self.assertIsNone(response.data["vps"])
+        self.assertEqual(VPS.objects.count(), 0)
 
     def test_purchase_api_mismatched_data_centers_returns_400(self):
         duration = Duration.objects.create(
@@ -174,14 +146,8 @@ class PurchaseOrderTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_order_detail_only_returns_own_orders(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-            )
+    def test_order_detail_only_returns_own_orders(self):
+        order = self._create_order()
 
         other_user = User.objects.create_user(
             mobile="09120000002",
@@ -200,8 +166,10 @@ class PurchaseOrderTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(str(response.data["uuid"]), str(order.uuid))
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_duplicate_vps_name_in_existing_vps_returns_400(self, delay_mock):
+    # ------------------------------------------------------------------
+    # Per-user unique VPS name
+    # ------------------------------------------------------------------
+    def test_duplicate_vps_name_in_existing_vps_returns_400(self):
         VPS.objects.create(
             user=self.user,
             plan=self.plan,
@@ -225,30 +193,16 @@ class PurchaseOrderTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("vps_name", response.data)
-        delay_mock.assert_not_called()
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_duplicate_vps_name_in_active_order_returns_400(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="Pending Name",
-            )
+    def test_duplicate_vps_name_in_active_order_returns_400(self):
+        self._create_order(vps_name="Pending Name")
 
         with self.assertRaises(ValidationError):
-            create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="pending name",
-            )
+            self._create_order(vps_name="pending name")
 
         self.assertEqual(Order.objects.count(), 1)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_same_vps_name_allowed_for_different_users(self, delay_mock):
+    def test_same_vps_name_allowed_for_different_users(self):
         other_user = User.objects.create_user(
             mobile="09120000003",
             email="other2@example.com",
@@ -263,13 +217,7 @@ class PurchaseOrderTests(TestCase):
             status=StatusChoices.Active,
         )
 
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=other_user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="Shared Name",
-            )
+        order = self._create_order(vps_name="Shared Name", user=other_user)
 
         self.assertEqual(order.vps_name, "Shared Name")
 
@@ -292,16 +240,11 @@ class PurchaseOrderTests(TestCase):
                     status=StatusChoices.Active,
                 )
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_create_vps_from_order_links_and_is_idempotent(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                operating_system_uuid=self.operating_system.uuid,
-                vps_name="Provisioned VPS",
-            )
+    # ------------------------------------------------------------------
+    # VPS creation helper
+    # ------------------------------------------------------------------
+    def test_create_vps_from_order_links_and_is_idempotent(self):
+        order = self._create_order(vps_name="Provisioned VPS")
 
         vps = create_vps_from_order(order)
         order.refresh_from_db()
@@ -322,15 +265,8 @@ class PurchaseOrderTests(TestCase):
         self.assertEqual(again.uuid, vps.uuid)
         self.assertEqual(VPS.objects.filter(user=self.user).count(), 1)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_create_vps_marks_order_failed_on_duplicate_name(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="Race Name",
-            )
+    def test_create_vps_marks_order_failed_on_duplicate_name(self):
+        order = self._create_order(vps_name="Race Name")
 
         # Simulate a racing request that created the VPS after the order was
         # placed but before provisioning ran.
@@ -349,45 +285,183 @@ class PurchaseOrderTests(TestCase):
         self.assertEqual(order.status, "failed")
         self.assertIsNone(order.vps_id)
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    @patch("apps.orders.tasks.provision_vps_task.delay")
-    def test_full_payment_and_provisioning_flow(
-        self,
-        provision_delay,
-        payment_delay,
-    ):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="End To End",
-            )
+    # ------------------------------------------------------------------
+    # Payment processing (Step B)
+    # ------------------------------------------------------------------
+    def test_process_order_payment_completes_and_provisions(self):
+        order = self._create_order(vps_name="Paid VPS")
 
-        with self.captureOnCommitCallbacks(execute=True):
-            process_mock_payment_task(str(order.uuid))
+        paid_order, gateway_payload = process_order_payment(
+            user=self.user,
+            order_uuid=order.uuid,
+        )
 
-        provision_delay.assert_called_once_with(str(order.uuid))
+        self.assertEqual(gateway_payload["status"], "APPROVED")
+        self.assertEqual(gateway_payload["gateway"], "mock_container_v1")
+        self.assertTrue(
+            gateway_payload["reference_id"].startswith("MOCK-PAY-")
+        )
 
-        # Run the decoupled provisioning task synchronously.
-        provision_vps_task(str(order.uuid))
-        order.refresh_from_db()
+        self.assertEqual(paid_order.payment_status, "completed")
+        self.assertEqual(paid_order.status, "active")
+        self.assertIsNotNone(paid_order.paid_at)
+        self.assertEqual(
+            paid_order.payment_reference,
+            gateway_payload["reference_id"],
+        )
+        self.assertIsNotNone(paid_order.vps_id)
+        self.assertEqual(paid_order.vps.name, "Paid VPS")
+        self.assertEqual(VPS.objects.filter(user=self.user).count(), 1)
 
-        self.assertEqual(order.payment_status, "completed")
-        self.assertEqual(order.status, "active")
-        self.assertIsNotNone(order.vps_id)
-        self.assertEqual(order.vps.name, "End To End")
+    def test_pay_endpoint_returns_order_and_gateway_response(self):
+        order = self._create_order(vps_name="API Paid VPS")
 
-    @patch("apps.orders.services.process_mock_payment_task.delay")
-    def test_vps_list_returns_only_current_user_vps(self, delay_mock):
-        with self.captureOnCommitCallbacks(execute=True):
-            order = create_purchase_order(
-                user=self.user,
-                plan_uuid=self.plan.uuid,
-                duration_uuid=self.duration.uuid,
-                vps_name="Listed VPS",
-            )
-        create_vps_from_order(order)
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        response = client.post(f"/api/v1/orders/{order.uuid}/pay/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["order"]["status"], "active")
+        self.assertEqual(
+            response.data["order"]["payment_status"],
+            "completed",
+        )
+        self.assertEqual(
+            response.data["order"]["payment_reference"],
+            response.data["payment_gateway_response"]["reference_id"],
+        )
+        self.assertEqual(
+            response.data["order"]["vps"]["name"],
+            "API Paid VPS",
+        )
+        self.assertEqual(
+            response.data["payment_gateway_response"]["status"],
+            "APPROVED",
+        )
+
+        # Full VPS details are also exposed as a top-level key.
+        self.assertIsNotNone(response.data["vps"])
+        self.assertEqual(response.data["vps"]["name"], "API Paid VPS")
+        for field in (
+            "uuid",
+            "name",
+            "ip_address",
+            "status",
+            "plan",
+            "duration",
+            "operating_system",
+            "created_at",
+        ):
+            self.assertIn(field, response.data["vps"])
+        self.assertEqual(response.data["vps"]["status"], "active")
+
+    def test_pay_endpoint_twice_returns_400_and_no_duplicate_vps(self):
+        order = self._create_order(vps_name="Double Pay VPS")
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        first = client.post(f"/api/v1/orders/{order.uuid}/pay/")
+        self.assertEqual(first.status_code, 200)
+
+        second = client.post(f"/api/v1/orders/{order.uuid}/pay/")
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("detail", second.data)
+
+        self.assertEqual(VPS.objects.filter(user=self.user).count(), 1)
+
+    def test_pay_endpoint_other_user_returns_404(self):
+        order = self._create_order()
+
+        other_user = User.objects.create_user(
+            mobile="09120000005",
+            email="other5@example.com",
+            national_id="2223334445",
+            password="secret123",
+        )
+        client = APIClient()
+        client.force_authenticate(user=other_user)
+
+        response = client.post(f"/api/v1/orders/{order.uuid}/pay/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_pay_endpoint_non_pending_order_returns_400(self):
+        order = self._create_order()
+        order.status = "cancelled"
+        order.save(update_fields=["status"])
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        response = client.post(f"/api/v1/orders/{order.uuid}/pay/")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("detail", response.data)
+
+    def test_gateway_failure_marks_order_failed(self):
+        order = self._create_order(vps_name="Declined VPS")
+
+        failed_order, gateway_payload = process_order_payment(
+            user=self.user,
+            order_uuid=order.uuid,
+            simulate_failure=True,
+        )
+
+        self.assertFalse(gateway_payload["success"])
+        self.assertEqual(gateway_payload["status"], "FAILED")
+        self.assertTrue(
+            gateway_payload["reference_id"].startswith("MOCK-FAIL-")
+        )
+
+        failed_order.refresh_from_db()
+        self.assertEqual(failed_order.payment_status, "failed")
+        self.assertEqual(failed_order.status, "failed")
+        self.assertEqual(
+            failed_order.payment_reference,
+            gateway_payload["reference_id"],
+        )
+        self.assertIsNone(failed_order.vps_id)
+        self.assertEqual(VPS.objects.count(), 0)
+
+    def test_pay_endpoint_simulate_failure_returns_400_with_order(self):
+        order = self._create_order(vps_name="API Declined VPS")
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        response = client.post(
+            f"/api/v1/orders/{order.uuid}/pay/",
+            {"simulate_failure": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data["payment_gateway_response"]["success"])
+        self.assertEqual(
+            response.data["payment_gateway_response"]["status"],
+            "FAILED",
+        )
+        self.assertEqual(response.data["order"]["status"], "failed")
+        self.assertEqual(
+            response.data["order"]["payment_status"],
+            "failed",
+        )
+        self.assertEqual(
+            response.data["order"]["payment_reference"],
+            response.data["payment_gateway_response"]["reference_id"],
+        )
+        self.assertIsNone(response.data["order"]["vps"])
+        self.assertIsNone(response.data["vps"])
+        self.assertEqual(VPS.objects.count(), 0)
+
+    # ------------------------------------------------------------------
+    # VPS listing
+    # ------------------------------------------------------------------
+    def test_vps_list_returns_only_current_user_vps(self):
+        order = self._create_order(vps_name="Listed VPS")
+        process_order_payment(user=self.user, order_uuid=order.uuid)
 
         other_user = User.objects.create_user(
             mobile="09120000004",

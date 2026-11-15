@@ -4,10 +4,19 @@ from apps.orders.models import Order, PaymentMethodChoices
 from apps.vps.models import VPS
 
 
-class OrderVPSSummarySerializer(serializers.ModelSerializer):
+class OrderVPSDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = VPS
-        fields = ["uuid", "name", "ip_address", "status"]
+        fields = [
+            "uuid",
+            "name",
+            "ip_address",
+            "status",
+            "plan",
+            "duration",
+            "operating_system",
+            "created_at",
+        ]
 
 
 class PurchaseVPSInputSerializer(serializers.Serializer):
@@ -26,10 +35,14 @@ class PurchaseVPSInputSerializer(serializers.Serializer):
     )
 
 
+class PayOrderInputSerializer(serializers.Serializer):
+    simulate_failure = serializers.BooleanField(required=False, default=False)
+
+
 class OrderDetailSerializer(serializers.ModelSerializer):
     plan = serializers.UUIDField(source="plan_id", read_only=True)
     duration = serializers.UUIDField(source="duration_id", read_only=True)
-    vps = OrderVPSSummarySerializer(read_only=True)
+    vps = OrderVPSDetailSerializer(read_only=True)
 
     class Meta:
         model = Order
@@ -46,6 +59,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "total_amount",
             "payment_method",
             "payment_status",
+            "payment_reference",
             "status",
             "paid_at",
             "created_at",

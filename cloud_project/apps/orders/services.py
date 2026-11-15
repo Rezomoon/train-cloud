@@ -1,16 +1,18 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
+from django.utils import timezone
+from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.infrastructure.models import OperatingSystem
+from apps.orders.gateways import charge_mock_payment
 from apps.orders.models import (
     Order,
     OrderStatusChoices,
     PaymentMethodChoices,
     PaymentStatusChoices,
 )
-from apps.orders.tasks import process_mock_payment_task
 from apps.vps.models import Duration, Plan, VPS
+from apps.vps.services import create_vps_from_order
 
 User = get_user_model()
 
@@ -19,6 +21,7 @@ ACTIVE_ORDER_STATUSES = [
     OrderStatusChoices.PENDING_PAYMENT,
     OrderStatusChoices.PAID,
     OrderStatusChoices.PROVISIONING,
+    OrderStatusChoices.ACTIVE,
 ]
 
 
@@ -30,9 +33,10 @@ def create_purchase_order(
     vps_name=None,
     payment_method=PaymentMethodChoices.BANK,
 ):
-    """Create a VPS purchase order and enqueue the mock payment task.
+    """Create a VPS purchase order awaiting an explicit payment request.
 
     All pricing is calculated server-side; client-provided amounts are ignored.
+    This function deliberately does not trigger payment or VPS creation.
     """
     plan = Plan.objects.filter(uuid=plan_uuid, is_active=True).first()
     if plan is None:
@@ -106,10 +110,81 @@ def create_purchase_order(
             status=OrderStatusChoices.PENDING_PAYMENT,
         )
 
-        # Only enqueue after the transaction is committed so the worker can
-        # always find the order row.
-        transaction.on_commit(
-            lambda: process_mock_payment_task.delay(str(order.uuid))
+    return order
+
+
+def process_order_payment(user, order_uuid, simulate_failure=False):
+    """Charge an order through the mock gateway and provision its VPS.
+
+    Returns a tuple of ``(order, gateway_response)``. Gateway failures are
+    returned (not raised) so the API can respond with the updated order data.
+    """
+    with transaction.atomic():
+        try:
+            order = Order.objects.select_for_update().get(
+                uuid=order_uuid,
+                user=user,
+            )
+        except Order.DoesNotExist:
+            raise NotFound("Order not found.")
+
+        # Idempotency guard: paying twice is an explicit API error.
+        if (
+            order.payment_status == PaymentStatusChoices.COMPLETED
+            or order.status in (
+                OrderStatusChoices.PAID,
+                OrderStatusChoices.ACTIVE,
+            )
+        ):
+            raise ValidationError(
+                {"detail": "This order has already been paid."}
+            )
+
+        if order.status != OrderStatusChoices.PENDING_PAYMENT:
+            raise ValidationError(
+                {
+                    "detail": (
+                        f"Cannot pay for an order in '{order.status}' status."
+                    )
+                }
+            )
+
+        gateway_response = charge_mock_payment(
+            order.uuid,
+            order.total_amount,
+            order.payment_method,
+            simulate_failure=simulate_failure,
         )
 
-    return order
+        if gateway_response["success"]:
+            order.payment_status = PaymentStatusChoices.COMPLETED
+            order.status = OrderStatusChoices.PAID
+            order.paid_at = timezone.now()
+            order.payment_reference = gateway_response["reference_id"]
+            order.save(
+                update_fields=[
+                    "payment_status",
+                    "status",
+                    "paid_at",
+                    "payment_reference",
+                    "updated_at",
+                ]
+            )
+
+            # Provision immediately so the client receives the final state.
+            create_vps_from_order(order)
+            order.refresh_from_db()
+        else:
+            order.payment_status = PaymentStatusChoices.FAILED
+            order.status = OrderStatusChoices.FAILED
+            order.payment_reference = gateway_response["reference_id"]
+            order.save(
+                update_fields=[
+                    "payment_status",
+                    "status",
+                    "payment_reference",
+                    "updated_at",
+                ]
+            )
+
+    return order, gateway_response

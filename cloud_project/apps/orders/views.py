@@ -7,9 +7,11 @@ from rest_framework.views import APIView
 from apps.orders.models import Order
 from apps.orders.serializers import (
     OrderDetailSerializer,
+    OrderVPSDetailSerializer,
+    PayOrderInputSerializer,
     PurchaseVPSInputSerializer,
 )
-from apps.orders.services import create_purchase_order
+from apps.orders.services import create_purchase_order, process_order_payment
 
 
 class PurchaseVPSAPIView(APIView):
@@ -43,4 +45,41 @@ class OrderDetailAPIView(APIView):
         return Response(
             OrderDetailSerializer(order).data,
             status=status.HTTP_200_OK,
+        )
+
+
+class PayOrderAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, uuid):
+        input_serializer = PayOrderInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+
+        order, gateway_payload = process_order_payment(
+            user=request.user,
+            order_uuid=uuid,
+            simulate_failure=input_serializer.validated_data[
+                "simulate_failure"
+            ],
+        )
+
+        vps_data = (
+            OrderVPSDetailSerializer(order.vps).data
+            if order.vps_id
+            else None
+        )
+
+        response_status = (
+            status.HTTP_200_OK
+            if gateway_payload["success"]
+            else status.HTTP_400_BAD_REQUEST
+        )
+
+        return Response(
+            {
+                "order": OrderDetailSerializer(order).data,
+                "payment_gateway_response": gateway_payload,
+                "vps": vps_data,
+            },
+            status=response_status,
         )

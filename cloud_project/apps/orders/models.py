@@ -65,6 +65,7 @@ class Order(AuditModel):
         default=PaymentStatusChoices.PENDING,
     )
     paid_at = models.DateTimeField(null=True, blank=True)
+    payment_reference = models.CharField(max_length=100, null=True, blank=True)
     status = models.CharField(
         max_length=50,
         choices=OrderStatusChoices.choices,
