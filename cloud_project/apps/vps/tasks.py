@@ -11,15 +11,15 @@ from apps.vps.services import create_provisioning_vps_from_order
 
 @shared_task
 def provision_vps_task(order_uuid: str):
-    """Provision the VPS for a paid order through the configured provider.
+    """Provision the VPS for a paid order using the mock infrastructure provider.
 
     The task is idempotent and safe to retry:
 
     * the order row is locked while reading/updating lifecycle state;
     * if the order is already active, or the VPS already has a provider
-      instance id, the task exits without touching the provider;
-    * the provider call happens *outside* the database lock so provider
-      latency never holds a row lock;
+      instance id, the task exits without creating another instance;
+    * the mock provider call happens *outside* the database lock so it never
+      holds a row lock;
     * failures mark both the VPS and the order accordingly.
     """
     # ------------------------------------------------------------------
@@ -66,14 +66,13 @@ def provision_vps_task(order_uuid: str):
         }
 
     # ------------------------------------------------------------------
-    # Phase 2: call the provider without holding any database lock.
+    # Phase 2: call the mock provider without holding any database lock.
     # ------------------------------------------------------------------
     try:
         # Imported lazily so the Celery module can load before Django apps.
-        from apps.infrastructure.providers import get_infrastructure_provider
+        from apps.infrastructure.providers import create_mock_instance
 
-        provider = get_infrastructure_provider()
-        result = provider.create_instance(**payload)
+        result = create_mock_instance(**payload)
     except Exception as exc:  # noqa: BLE001 - provider errors are recorded
         with transaction.atomic():
             vps = VPS.objects.select_for_update().get(pk=vps_id)

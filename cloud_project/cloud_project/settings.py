@@ -204,28 +204,3 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
-
-
-# Infrastructure provider
-# Switch between the network-free mock provider and a real OpenStack backend
-# without changing any service or task code.
-INFRASTRUCTURE_PROVIDER = env('INFRASTRUCTURE_PROVIDER', default='mock')
-
-OPENSTACK_AUTH_URL = env(
-    'OPENSTACK_AUTH_URL', default='http://localhost:5000/v3'
-)
-OPENSTACK_USERNAME = env('OPENSTACK_USERNAME', default='')
-OPENSTACK_PASSWORD = env('OPENSTACK_PASSWORD', default='')
-OPENSTACK_PROJECT_NAME = env('OPENSTACK_PROJECT_NAME', default='')
-OPENSTACK_USER_DOMAIN_NAME = env(
-    'OPENSTACK_USER_DOMAIN_NAME', default='Default'
-)
-OPENSTACK_PROJECT_DOMAIN_NAME = env(
-    'OPENSTACK_PROJECT_DOMAIN_NAME', default='Default'
-)
-OPENSTACK_REGION_NAME = env('OPENSTACK_REGION_NAME', default='RegionOne')
-OPENSTACK_INTERFACE = env('OPENSTACK_INTERFACE', default='public')
-OPENSTACK_NETWORK_ID = env('OPENSTACK_NETWORK_ID', default='')
-OPENSTACK_FLAVOR_ID = env('OPENSTACK_FLAVOR_ID', default='')
-OPENSTACK_IMAGE_ID = env('OPENSTACK_IMAGE_ID', default='')
-OPENSTACK_TIMEOUT = env.int('OPENSTACK_TIMEOUT', default=600)

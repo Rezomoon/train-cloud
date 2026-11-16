@@ -1,44 +1,31 @@
-"""Provider factory.
-
-Services and Celery tasks call :func:`get_infrastructure_provider` and remain
-completely unaware of which backend is configured.
-"""
-
-from django.conf import settings
-
-from apps.infrastructure.providers.base import (
-    BaseCloudProvider,
-    ProvisionedInstance,
-)
-from apps.infrastructure.providers.mock import MockCloudProvider
-
-__all__ = [
-    "BaseCloudProvider",
-    "ProvisionedInstance",
-    "MockCloudProvider",
-    "get_infrastructure_provider",
-]
+import random
+import uuid
 
 
-def get_infrastructure_provider() -> BaseCloudProvider:
-    """Return the provider selected by the ``INFRASTRUCTURE_PROVIDER`` setting."""
+def create_mock_instance(
+    name: str,
+    cpu: int,
+    ram: int,
+    storage: int,
+    os_name: str = "",
+    region: str = "",
+) -> dict:
+    """Simulate creating a VPS instance and return mock ID, IP, and status."""
+    return {
+        "instance_id": f"mock-inst-{uuid.uuid4().hex[:12]}",
+        "ip_address": f"10.20.{random.randint(1, 254)}.{random.randint(2, 254)}",
+        "status": "ACTIVE",
+    }
 
-    provider_name = getattr(
-        settings, "INFRASTRUCTURE_PROVIDER", "mock"
-    ).strip().lower()
 
-    if provider_name == "mock":
-        return MockCloudProvider()
+def delete_mock_instance(instance_id: str) -> bool:
+    """Simulate deleting a VPS instance."""
+    return True
 
-    if provider_name == "openstack":
-        # Imported lazily so the OpenStack SDK is optional.
-        from apps.infrastructure.providers.openstack import (
-            OpenStackCloudProvider,
-        )
 
-        return OpenStackCloudProvider()
-
-    raise ValueError(
-        f"Unsupported INFRASTRUCTURE_PROVIDER: '{provider_name}'. "
-        "Expected 'mock' or 'openstack'."
-    )
+def get_mock_instance_status(instance_id: str) -> dict:
+    """Simulate checking a VPS instance status."""
+    return {
+        "instance_id": instance_id,
+        "status": "ACTIVE",
+    }

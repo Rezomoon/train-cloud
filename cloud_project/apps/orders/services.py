@@ -174,7 +174,7 @@ def process_order_payment(user, order_uuid, simulate_failure=False):
             # Create the initial VPS row in "provisioning" state. Hardware is
             # taken from the order snapshot, not from the mutable plan.
             vps = create_provisioning_vps_from_order(order)
-            order.refresh_from_db()
+            order.refresh_from_db() # TODO 
 
             # Enqueue asynchronous provisioning only once the payment
             # transaction has actually committed.
