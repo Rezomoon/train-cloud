@@ -10,6 +10,7 @@ class OrderVPSDetailSerializer(serializers.ModelSerializer):
         fields = [
             "uuid",
             "name",
+            "provider_instance_id",
             "ip_address",
             "status",
             "cpu",

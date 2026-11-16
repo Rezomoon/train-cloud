@@ -23,9 +23,16 @@ class VPSAdmin(admin.ModelAdmin):
         'cpu',
         'ram',
         'storage',
+        'provider_instance_id',
         'ip_address',
         'status',
     )
     list_filter = ('status',)
-    search_fields = ('user__email', 'plan__name', 'duration__name', 'ip_address')
+    search_fields = (
+        'user__email',
+        'plan__name',
+        'duration__name',
+        'ip_address',
+        'provider_instance_id',
+    )
     readonly_fields = ('cpu', 'ram', 'storage')

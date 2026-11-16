@@ -12,7 +12,7 @@ from apps.orders.models import (
     PaymentStatusChoices,
 )
 from apps.vps.models import Duration, Plan, VPS
-from apps.vps.services import create_vps_from_order
+from apps.vps.services import create_provisioning_vps_from_order
 
 User = get_user_model()
 
@@ -158,7 +158,7 @@ def process_order_payment(user, order_uuid, simulate_failure=False):
 
         if gateway_response["success"]:
             order.payment_status = PaymentStatusChoices.COMPLETED
-            order.status = OrderStatusChoices.PAID
+            order.status = OrderStatusChoices.PROVISIONING
             order.paid_at = timezone.now()
             order.payment_reference = gateway_response["reference_id"]
             order.save(
@@ -171,9 +171,19 @@ def process_order_payment(user, order_uuid, simulate_failure=False):
                 ]
             )
 
-            # Provision immediately so the client receives the final state.
-            create_vps_from_order(order)
+            # Create the initial VPS row in "provisioning" state. Hardware is
+            # taken from the order snapshot, not from the mutable plan.
+            vps = create_provisioning_vps_from_order(order)
             order.refresh_from_db()
+
+            # Enqueue asynchronous provisioning only once the payment
+            # transaction has actually committed.
+            if vps is not None:
+                from apps.vps.tasks import provision_vps_task
+
+                transaction.on_commit(
+                    lambda: provision_vps_task.delay(str(order.uuid))
+                )
         else:
             order.payment_status = PaymentStatusChoices.FAILED
             order.status = OrderStatusChoices.FAILED

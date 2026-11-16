@@ -6,9 +6,11 @@ from apps.orders.models import Order, OrderStatusChoices
 from apps.vps.models import StatusChoices, VPS
 
 
-def create_vps_from_order(order: Order) -> Optional[VPS]:
-    """Create the VPS record for a paid order.
+def create_provisioning_vps_from_order(order: Order) -> Optional[VPS]:
+    """Create the initial VPS record for a paid order.
 
+    The record starts in ``provisioning`` status with no IP and no provider
+    instance id; the Celery provisioning task fills those in asynchronously.
     The function is idempotent: if the order already has a VPS, it is returned
     without creating a second record.
     """
@@ -31,9 +33,9 @@ def create_vps_from_order(order: Order) -> Optional[VPS]:
                     cpu=order.cpu_snapshot,
                     ram=order.ram_snapshot,
                     storage=order.storage_snapshot,
-                    # TODO: Replace mock IP/status with Infrastructure Provider
-                    ip_address="10.10.0.15",
-                    status=StatusChoices.Active,
+                    ip_address=None,
+                    provider_instance_id=None,
+                    status=StatusChoices.PROVISIONING,
                 )
         except IntegrityError:
             order.status = OrderStatusChoices.FAILED
@@ -41,7 +43,10 @@ def create_vps_from_order(order: Order) -> Optional[VPS]:
             return None
 
         order.vps = vps
-        order.status = OrderStatusChoices.ACTIVE
-        order.save(update_fields=["vps", "status", "updated_at"])
+        order.save(update_fields=["vps", "updated_at"])
 
         return vps
+
+
+# Backwards-compatible alias for callers that still use the old name.
+create_vps_from_order = create_provisioning_vps_from_order

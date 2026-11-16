@@ -14,7 +14,8 @@ class Plan(AuditModel):
     storage = models.IntegerField()
     is_active = models.BooleanField(default=True)
     data_center = models.ForeignKey('infrastructure.DataCenter', on_delete=models.CASCADE)
-    
+    # Optional mapping to the infrastructure provider's flavor identifier.
+    provider_flavor_id = models.CharField(max_length=100, null=True, blank=True)
 
     def __str__(self):
         return self.name
@@ -28,8 +29,11 @@ class Duration(AuditModel):
         return self.name
 
 class StatusChoices(models.TextChoices):
-    Active = "active"
-    Inactive = "inactive"
+    PROVISIONING = "provisioning", "Provisioning"
+    ACTIVE = "active", "Active"
+    INACTIVE = "inactive", "Inactive"
+    ERROR = "error", "Error"
+    TERMINATED = "terminated", "Terminated"
 
 class VPS(AuditModel):
     # order = models.OneToOneField("apps.orders.Order", on_delete=models.CASCADE)
@@ -43,8 +47,18 @@ class VPS(AuditModel):
         null=True,
         blank=True,
     )
-    ip_address = models.GenericIPAddressField(null = True, blank=True)
-    status = models.CharField(max_length=50, choices=StatusChoices.choices, default='inactive')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    provider_instance_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=50,
+        choices=StatusChoices.choices,
+        default=StatusChoices.PROVISIONING,
+    )
 
     # Hardware snapshot captured at purchase time so later Plan changes do not
     # affect already provisioned VPS instances.
