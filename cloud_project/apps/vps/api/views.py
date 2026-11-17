@@ -5,6 +5,7 @@ from rest_framework import status
 from apps.vps.models import VPS
 from apps.vps.serializers import VPSPlanSerializer, VPSSerializer, DurationSerializer
 from apps.vps.queries import all_vps_plans, get_vps_plan_by_id, all_durations, get_duration_by_id, user_vps_list, get_vps_by_id
+from apps.vps.services import request_vps_termination
 # Create your views here.
 
 
@@ -68,3 +69,18 @@ class VPSDetailView(APIView):
             return Response({"detail": "VPS not found."}, status=status.HTTP_404_NOT_FOUND)
         serializer = VPSSerializer(vps)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class TerminateVPSAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, vps_id):
+        vps = request_vps_termination(user=request.user, vps_uuid=vps_id)
+        serializer = VPSSerializer(vps)
+        return Response(
+            {
+                "detail": "VPS termination request accepted.",
+                "vps": serializer.data,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )

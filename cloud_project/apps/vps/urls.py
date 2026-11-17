@@ -6,6 +6,7 @@ from apps.vps.api.views import (
     PurchaseVPSView,
     VPSListView,
     VPSDetailView,
+    TerminateVPSAPIView,
 )
 urlpatterns = [
     path("", VPSListView.as_view(), name="vps-list"),
@@ -13,5 +14,6 @@ urlpatterns = [
     path("plans/<uuid:plan_id>/", VPSPlanDetailView.as_view(), name="vps-plan-detail"),
     path("durations/", DurationListView.as_view(), name="vps-durations"),
     path("purchase/", PurchaseVPSView.as_view(), name="vps-purchase"),
-    path("<uuid:vps_id>/", VPSDetailView.as_view(), name="vps-detail")
+    path("<uuid:vps_id>/", VPSDetailView.as_view(), name="vps-detail"),
+    path("<uuid:vps_id>/terminate/", TerminateVPSAPIView.as_view(), name="vps-terminate"),
 ]

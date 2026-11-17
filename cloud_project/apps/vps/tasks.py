@@ -1,3 +1,5 @@
+import logging
+
 from celery import shared_task
 from django.db import transaction
 
@@ -7,6 +9,8 @@ from apps.orders.models import (
 )
 from apps.vps.models import StatusChoices, VPS
 from apps.vps.services import create_provisioning_vps_from_order
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task
@@ -116,3 +120,56 @@ def provision_vps_task(order_uuid: str):
         "instance_id": result["instance_id"],
         "ip_address": result["ip_address"],
     }
+
+
+@shared_task
+def terminate_vps_task(vps_uuid: str):
+    """Terminate a VPS asynchronously using the mock infrastructure provider.
+
+    The task is idempotent: if the VPS is already terminated it exits without
+    doing any work. The provider call happens outside the database lock so the
+    row is not held during the network request.
+    """
+    # ------------------------------------------------------------------
+    # Phase 1: lock the row, guard against duplicate work, gather input.
+    # ------------------------------------------------------------------
+    with transaction.atomic():
+        try:
+            vps = VPS.objects.select_for_update().get(uuid=vps_uuid)
+        except VPS.DoesNotExist:
+            return {"status": "skipped", "reason": "vps_not_found"}
+
+        if vps.status == StatusChoices.TERMINATED:
+            return {"status": "skipped", "reason": "already_terminated"}
+
+        provider_id = vps.provider_instance_id
+
+    # ------------------------------------------------------------------
+    # Phase 2: call the mock provider without holding any database lock.
+    # ------------------------------------------------------------------
+    try:
+        if provider_id:
+            # Imported lazily so the Celery module can load before Django apps.
+            from apps.infrastructure.providers import delete_mock_instance
+
+            delete_mock_instance(provider_id)
+    except Exception as exc:  # noqa: BLE001 - provider errors are recorded
+        logger.exception("Failed to delete VPS instance %s", provider_id)
+
+        with transaction.atomic():
+            vps = VPS.objects.select_for_update().get(uuid=vps_uuid)
+            vps.status = StatusChoices.ERROR
+            vps.save(update_fields=["status", "updated_at"])
+
+        return {"status": "failed", "error": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Phase 3: finalize the database state.
+    # ------------------------------------------------------------------
+    with transaction.atomic():
+        vps = VPS.objects.select_for_update().get(uuid=vps_uuid)
+        vps.status = StatusChoices.TERMINATED
+        vps.ip_address = None
+        vps.save(update_fields=["status", "ip_address", "updated_at"])
+
+    return {"status": "terminated"}

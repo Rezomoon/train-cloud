@@ -33,6 +33,7 @@ class StatusChoices(models.TextChoices):
     ACTIVE = "active", "Active"
     INACTIVE = "inactive", "Inactive"
     ERROR = "error", "Error"
+    TERMINATING = "terminating", "Terminating"
     TERMINATED = "terminated", "Terminated"
 
 class VPS(AuditModel):
