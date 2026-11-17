@@ -13,6 +13,7 @@ from apps.orders.serializers import (
 )
 from apps.orders.services import create_purchase_order, process_order_payment
 
+from apps.orders.queries import get_user_orders
 
 class PurchaseVPSAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -83,3 +84,13 @@ class PayOrderAPIView(APIView):
             },
             status=response_status,
         )
+
+
+class OrdersListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        queryset = get_user_orders(request.user)
+        serializer = OrderDetailSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
